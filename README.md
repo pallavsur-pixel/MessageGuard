@@ -95,20 +95,8 @@ sms-spam-detection/
     └── (optional local SMSSpamCollection file)
 ```
 
-## 7. Suggested 10-page report structure
 
-1. Title page and abstract
-2. Introduction and problem statement
-3. Objectives and existing-system limitations
-4. Dataset description and data cleaning
-5. Exploratory data analysis and class distribution
-6. TF-IDF, train/test split, and methodology
-7. Four models and their working principles
-8. Performance comparison table, confusion matrix, ROC curves
-9. UI screenshots, deployment, GitHub structure
-10. Conclusion, limitations, future scope, references
-
-## 8. Important viva points
+## 7. Important points
 
 - TF-IDF converts text into numerical features.
 - Stratification preserves approximate class proportions.
