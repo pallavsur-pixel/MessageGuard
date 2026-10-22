@@ -5,6 +5,7 @@ import numpy as np
 from app import (
     normalize_label,
     load_uploaded_dataset,
+    load_and_combine_datasets,
     detect_columns,
     clean_dataframe,
     build_models,
@@ -281,7 +282,77 @@ else:
 assert np.isnan(single_class_auc), "Single class test split correctly produces NaN for ROC-AUC"
 print(" -> PASSED: Verified single-class test split handling (NaN AUC).")
 
+# -------------------------------------------------------------
+# Test 16: Multiple valid files loading and combining
+# -------------------------------------------------------------
+print("\n[Test 16] Multiple valid files loading & combining (load_and_combine_datasets):")
+class MockUploadFile(io.BytesIO):
+    def __init__(self, initial_bytes=b"", name="upload.csv"):
+        super().__init__(initial_bytes)
+        self.name = name
+
+# File 1: standard label, message
+f1_csv = (
+    "label,message\n" +
+    "\n".join([f"ham,Hello friend message {i}" for i in range(15)]) + "\n" +
+    "\n".join([f"spam,Win cash prize lottery {i}" for i in range(5)])
+).encode("utf-8")
+file1 = MockUploadFile(f1_csv, name="dataset_part1.csv")
+
+# File 2: alternate columns category, text (or v1, v2)
+f2_csv = (
+    "category,text\n" +
+    "\n".join([f"ham,Second batch legitimate message {i}" for i in range(12)]) + "\n" +
+    "\n".join([f"spam,Claim free reward coupon {i}" for i in range(6)])
+).encode("utf-8")
+file2 = MockUploadFile(f2_csv, name="dataset_part2.csv")
+
+clean_multi, stats_multi, reps_multi, raw_multi = load_and_combine_datasets([file1, file2])
+assert stats_multi["total_files_uploaded"] == 2, f"Expected 2, got {stats_multi['total_files_uploaded']}"
+assert stats_multi["valid_files_count"] == 2, f"Expected 2 valid, got {stats_multi['valid_files_count']}"
+assert stats_multi["failed_files_count"] == 0, f"Expected 0 failed, got {stats_multi['failed_files_count']}"
+assert len(reps_multi) == 2
+assert all(r["status"] == "Valid" for r in reps_multi)
+assert stats_multi["final_rows"] == 38, f"Expected 38 clean rows (20+18), got {stats_multi['final_rows']}"
+print(f" -> PASSED: Successfully combined 2 distinct valid files into {stats_multi['final_rows']} clean rows.")
+
+# -------------------------------------------------------------
+# Test 17: Mixed valid and invalid files handling (resilience & manifests)
+# -------------------------------------------------------------
+print("\n[Test 17] Mixed valid and invalid files handling:")
+# Valid file
+file_valid = MockUploadFile(f1_csv, name="valid_stream.csv")
+# Empty file
+file_empty = MockUploadFile(b"", name="empty_stream.csv")
+# Missing columns file
+file_badcols = MockUploadFile(b"colA,colB\n1,2\n3,4", name="bad_cols_stream.csv")
+
+clean_mixed, stats_mixed, reps_mixed, raw_mixed = load_and_combine_datasets([file_valid, file_empty, file_badcols])
+assert stats_mixed["total_files_uploaded"] == 3
+assert stats_mixed["valid_files_count"] == 1
+assert stats_mixed["failed_files_count"] == 2
+assert len(reps_mixed) == 3
+assert reps_mixed[0]["status"] == "Valid"
+assert reps_mixed[1]["status"] == "Skipped / Invalid" and "empty" in reps_mixed[1]["error"].lower()
+assert reps_mixed[2]["status"] == "Skipped / Invalid" and "identify both" in reps_mixed[2]["error"].lower()
+assert stats_mixed["final_rows"] == 20
+print(f" -> PASSED: Safely processed mixed upload (1 valid merged, 2 invalid logged with diagnostic errors).")
+
+# -------------------------------------------------------------
+# Test 18: All-invalid files rejection
+# -------------------------------------------------------------
+print("\n[Test 18] All-invalid files rejection:")
+try:
+    load_and_combine_datasets([file_empty, file_badcols])
+    assert False, "Should have raised ValueError when all uploaded files are invalid"
+except ValueError as exc:
+    err_str = str(exc)
+    assert "None of the uploaded files could be parsed" in err_str
+    assert "empty_stream.csv" in err_str
+    assert "bad_cols_stream.csv" in err_str
+    print(f" -> PASSED: Raised expected comprehensive ValueError:\n    {err_str.replace(chr(10), ' | ')}")
+
 print("\n" + "=" * 60)
-print("ALL 15 COMPREHENSIVE TESTS PASSED WITH 100% SUCCESS!")
+print("ALL 18 COMPREHENSIVE TESTS PASSED WITH 100% SUCCESS!")
 print("=" * 60)
 
